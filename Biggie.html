@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BIGGIE</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#000">
+<link rel="manifest" href="manifest.json">
+
+<style>
+:root{
+--bg:#000;--card:#0b0b0b;--accent:#22c55e;
+--break:#38bdf8;--danger:#ef4444;--muted:#6b7280;
+}
+*{box-sizing:border-box}
+body{
+margin:0;background:var(--bg);color:#fff;
+font-family:system-ui;height:100vh;
+display:flex;align-items:center;justify-content:center
+}
+.card{
+width:360px;padding:22px;border-radius:28px;
+background:var(--card);text-align:center
+}
+h1{font-size:42px;margin:8px 0}
+.mode{font-size:14px;color:var(--muted)}
+input,button{
+background:#111;color:#fff;border:none;
+border-radius:14px;padding:10px;margin:6px
+}
+.start{background:var(--accent)}
+.stop{background:var(--danger)}
+.small{font-size:13px;color:var(--muted)}
+svg{width:180px;height:180px;margin:auto}
+circle{fill:none;stroke-width:10}
+.bg{stroke:#111}
+.progress{
+stroke:var(--accent);stroke-linecap:round;
+transition:stroke-dashoffset .4s linear
+}
+.locked button:not(.stop){opacity:.35;pointer-events:none}
+.hidden{display:none}
+</style>
+</head>
+
+<body>
+<div class="card" id="app">
+
+<div class="mode" id="mode">Work</div>
+
+<svg>
+<circle class="bg" cx="90" cy="90" r="80"/>
+<circle class="progress" cx="90" cy="90" r="80"/>
+</svg>
+
+<h1 id="time">25:00</h1>
+
+<input id="task" placeholder="Task (optional)">
+
+<button class="start" onclick="start()">Start</button>
+<button class="stop" id="stopBtn" onclick="stop()">Stop</button>
+
+<div class="small">
+Today <b id="today">0</b> |
+Best 🔥 <b id="best">0</b> |
+Total <b id="total">0</b> min
+</div>
+
+<hr>
+
+<button onclick="toggleMusic()">🎧 Music</button>
+<button onclick="toggleHardcore()">💀 Hardcore</button>
+<button onclick="fullscreen()">🔒 Focus</button>
+
+<svg id="chart" width="320" height="80"></svg>
+
+</div>
+
+<audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="music" loop
+src="https://cdn.pixabay.com/audio/2022/03/15/audio_5a7e5d6b64.mp3"></audio>
+
+<script>
+/* ---------- STATE ---------- */
+const times={work:1500,short:300,long:900};
+const cycle=["work","short","work","short","work","short","work","long"];
+let i=0,mode=cycle[i],t=times[mode],timer=null,hardcore=false;
+const r=80,c=2*Math.PI*r;
+document.querySelector(".progress").style.strokeDasharray=c;
+
+let data=JSON.parse(localStorage.getItem("biggie"))||{
+today:0,total:0,best:0,history:Array(7).fill(0),
+day:new Date().toDateString()
+};
+
+/* ---------- HELPERS ---------- */
+function save(){localStorage.setItem("biggie",JSON.stringify(data))}
+function fmt(s){return`${String(s/60|0).padStart(2,0)}:${String(s%60).padStart(2,0)}`}
+function vibrate(){navigator.vibrate?.(20)}
+
+/* ---------- UI UPDATE ---------- */
+function update(){
+time.textContent=fmt(t);
+document.querySelector(".progress").style.strokeDashoffset=
+c*(1-t/times[mode]);
+modeEl.textContent=mode==="work"?"Work":mode==="short"?"Break":"Long Break";
+today.textContent=data.today;
+total.textContent=data.total;
+best.textContent=data.best;
+drawChart();
+}
+
+/* ---------- TIMER ---------- */
+function start(){
+if(timer) return;
+lock(true);
+fadeIn(music);
+wake();
+timer=setInterval(()=>{
+if(t<=0){complete();return}
+t--;update()
+},1000)
+}
+
+function stop(auto=false){
+if(!auto && mode==="work" && !confirm("End session?")) return;
+clearInterval(timer);timer=null;
+fadeOut(music);
+lock(false);
+if(auto && mode==="work"){
+data.today++;data.total+=25;
+data.best=Math.max(data.best,data.today);
+data.history[6]++;save();vibrate();
+}
+next();update();
+}
+
+function complete(){beep.play();stop(true)}
+
+function next(){
+i=(i+1)%cycle.length;
+mode=cycle[i];t=times[mode];
+if(mode!=="work") music.pause()
+}
+
+/* ---------- AUDIO ---------- */
+function fadeIn(a){let v=0;a.volume=0;a.play();
+let f=setInterval(()=>{v+=.05;a.volume=v;if(v>=.8)clearInterval(f)},100)}
+function fadeOut(a){let v=a.volume;
+let f=setInterval(()=>{v-=.05;a.volume=v;if(v<=0){a.pause();clearInterval(f)}},100)}
+function toggleMusic(){music.paused?music.play():music.pause()}
+
+/* ---------- FOCUS ---------- */
+async function wake(){
+if('wakeLock'in navigator)
+await navigator.wakeLock.request('screen')
+}
+function fullscreen(){document.documentElement.requestFullscreen?.()}
+function lock(x){
+app.classList.toggle("locked",x);
+stopBtn.classList.toggle("hidden",x&&hardcore)
+}
+
+/* ---------- HARDCORE ---------- */
+function toggleHardcore(){
+hardcore=!hardcore;
+alert(hardcore?"Hardcore ON":"Hardcore OFF")
+}
+
+/* ---------- CHART ---------- */
+function drawChart(){
+const svg=chart;svg.innerHTML="";
+const w=40;
+data.history.forEach((v,i)=>{
+let h=v*8;
+svg.innerHTML+=
+`<rect x="${i*w+5}" y="${70-h}"
+width="25" height="${h}" fill="#22c55e"/>`
+})
+}
+
+/* ---------- DAY RESET ---------- */
+if(data.day!==new Date().toDateString()){
+data.history.shift();data.history.push(0);
+data.today=0;data.day=new Date().toDateString();save()
+}
+
+update();
+</script>
+</body>
+</html>
